@@ -1,0 +1,14 @@
+{
+  "name": "alltos",
+  "version": "1.0.0",
+  "description": "Bot TOS & Privacy Policy server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "marked": "^12.0.0"
+  }
+}
