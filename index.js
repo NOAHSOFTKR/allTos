@@ -7,18 +7,53 @@ const app = express();
 const PORT = 50000;
 const DATA_DIR = path.join(__dirname, 'data');
 
-const TYPE_LABELS = { tos: '이용약관', pp: '개인정보처리방침' };
+// tos/pp는 meta.json 선언 없이도 파일만 있으면 자동 노출됨 (기존 동작 유지)
+const DEFAULT_DOCS = { tos: '이용약관', pp: '개인정보처리방침' };
+
+function getMeta(botId) {
+  const metaPath = path.join(DATA_DIR, botId, 'meta.json');
+  return fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : { name: botId };
+}
+
+// tos/pp 외 문서는 meta.json의 "docs" 객체에 { key: 라벨 } 로 선언해야만 노출됨
+function getDocs(botId) {
+  const meta = getMeta(botId);
+  const customDocs = meta.docs || {};
+  const docs = [];
+  const seen = new Set();
+
+  for (const [key, label] of Object.entries(DEFAULT_DOCS)) {
+    if (fs.existsSync(path.join(DATA_DIR, botId, `${key}.md`))) {
+      docs.push({ key, label });
+      seen.add(key);
+    }
+  }
+  for (const [key, label] of Object.entries(customDocs)) {
+    if (seen.has(key) || fs.existsSync(path.join(DATA_DIR, botId, `${key}.md`)) === false) continue;
+    docs.push({ key, label });
+    seen.add(key);
+  }
+  return docs;
+}
+
+function docIcon(key) {
+  if (key === 'tos') return '📄';
+  if (key === 'pp') return '🔒';
+  return '📎';
+}
 
 function getBots() {
   return fs.readdirSync(DATA_DIR, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => {
-      const metaPath = path.join(DATA_DIR, d.name, 'meta.json');
-      const meta = fs.existsSync(metaPath)
-        ? JSON.parse(fs.readFileSync(metaPath, 'utf8'))
-        : { name: d.name, description: '', lastUpdated: '' };
-      const hasDoc = (type) => fs.existsSync(path.join(DATA_DIR, d.name, `${type}.md`));
-      return { id: d.name, ...meta, hasTos: hasDoc('tos'), hasPp: hasDoc('pp') };
+      const meta = getMeta(d.name);
+      return {
+        id: d.name,
+        name: meta.name || d.name,
+        description: meta.description || '',
+        lastUpdated: meta.lastUpdated || '',
+        docs: getDocs(d.name),
+      };
     });
 }
 
@@ -47,10 +82,8 @@ function page(title, body) {
     .card-meta { font-size: 0.75rem; color: #475569; margin-bottom: 14px; }
     .badges { display: flex; gap: 8px; flex-wrap: wrap; }
     .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; font-weight: 500; border: 1px solid transparent; }
-    .badge-tos { background: #1e293b; border-color: #334155; color: #94a3b8; }
-    .badge-pp { background: #1a1f2e; border-color: #2d3748; color: #94a3b8; }
+    .badge-doc { background: #1e293b; border-color: #334155; color: #94a3b8; }
     .badge:hover { background: #252836; color: #fff; }
-    .badge-disabled { opacity: 0.35; pointer-events: none; }
     .raw-badge { background: #111827; border-color: #1f2937; color: #6b7280; font-size: 0.72rem; padding: 4px 10px; }
     .content { background: #16161e; border: 1px solid #2d2d3d; border-radius: 12px; padding: 40px; }
     .content h1 { font-size: 1.6rem; color: #fff; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2d2d3d; }
@@ -84,18 +117,15 @@ function page(title, body) {
 app.get('/', (req, res) => {
   const bots = getBots();
   const cards = bots.map(bot => {
-    const tosBadge = bot.hasTos
-      ? `<a class="badge badge-tos" href="/${bot.id}/tos">📄 이용약관</a><a class="badge raw-badge" href="/${bot.id}/tos/raw">RAW</a>`
-      : `<span class="badge badge-tos badge-disabled">📄 이용약관</span>`;
-    const ppBadge = bot.hasPp
-      ? `<a class="badge badge-pp" href="/${bot.id}/pp">🔒 개인정보처리방침</a><a class="badge raw-badge" href="/${bot.id}/pp/raw">RAW</a>`
-      : `<span class="badge badge-pp badge-disabled">🔒 개인정보처리방침</span>`;
+    const badges = bot.docs.map(doc =>
+      `<a class="badge badge-doc" href="/${bot.id}/${doc.key}">${docIcon(doc.key)} ${doc.label}</a><a class="badge raw-badge" href="/${bot.id}/${doc.key}/raw">RAW</a>`
+    ).join('');
     return `
     <div class="card">
       <div class="card-title">${bot.name}</div>
       <div class="card-desc">${bot.description || ''}</div>
       ${bot.lastUpdated ? `<div class="card-meta">최종 업데이트: ${bot.lastUpdated}</div>` : ''}
-      <div class="badges">${tosBadge}${ppBadge}</div>
+      <div class="badges">${badges || '<span style="color:#475569;font-size:0.85rem">등록된 문서가 없습니다</span>'}</div>
     </div>`;
   }).join('');
 
@@ -109,46 +139,47 @@ app.get('/', (req, res) => {
   res.send(page('Noahsoft 봇 정책 허브', body));
 });
 
-// 문서 렌더링 — /:botname/:type
+// 문서 렌더링 — /:botname/:type (tos/pp는 자동 노출, 그 외는 meta.json의 docs에 선언되어야 함)
 app.get('/:botname/:type', (req, res, next) => {
   const { botname, type } = req.params;
-  if (!['tos', 'pp'].includes(type)) return next();
+  if (!fs.existsSync(path.join(DATA_DIR, botname))) return next();
 
-  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send(page('404', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 문서를 찾을 수 없습니다</h2><p style="color:#64748b">봇 <strong>${botname}</strong>의 ${TYPE_LABELS[type] || type}이(가) 존재하지 않습니다.</p></div>`));
+  const docs = getDocs(botname);
+  const doc = docs.find(d => d.key === type);
+  if (!doc) {
+    return res.status(404).send(page('404', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 문서를 찾을 수 없습니다</h2><p style="color:#64748b">봇 <strong>${botname}</strong>의 <strong>${type}</strong> 문서가 존재하지 않거나 meta.json에 선언되지 않았습니다.</p></div>`));
   }
 
-  const metaPath = path.join(DATA_DIR, botname, 'meta.json');
-  const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : { name: botname };
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const html = marked(raw);
-  const otherType = type === 'tos' ? 'pp' : 'tos';
-  const otherExists = fs.existsSync(path.join(DATA_DIR, botname, `${otherType}.md`));
+  const meta = getMeta(botname);
+  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
+  const html = marked(fs.readFileSync(filePath, 'utf8'));
+  const otherDocs = docs.filter(d => d.key !== type);
 
   const body = `
     <div class="doc-header">
-      <h2>${meta.name} · ${TYPE_LABELS[type]}</h2>
+      <h2>${meta.name} · ${doc.label}</h2>
       <div class="doc-actions">
-        ${otherExists ? `<a class="btn" href="/${botname}/${otherType}">${TYPE_LABELS[otherType]}</a>` : ''}
+        ${otherDocs.map(d => `<a class="btn" href="/${botname}/${d.key}">${d.label}</a>`).join('')}
         <a class="btn" href="/${botname}/${type}/raw">RAW</a>
       </div>
     </div>
     <div class="content">${html}</div>`;
 
-  res.send(page(`${meta.name} ${TYPE_LABELS[type]}`, body));
+  res.send(page(`${meta.name} ${doc.label}`, body));
 });
 
 // RAW 마크다운 — /:botname/:type/raw
 app.get('/:botname/:type/raw', (req, res, next) => {
   const { botname, type } = req.params;
-  if (!['tos', 'pp'].includes(type)) return next();
+  if (!fs.existsSync(path.join(DATA_DIR, botname))) return next();
 
-  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).type('text').send(`404: ${botname}/${type}.md not found`);
+  const docs = getDocs(botname);
+  const doc = docs.find(d => d.key === type);
+  if (!doc) {
+    return res.status(404).type('text').send(`404: ${botname}/${type}.md not found or not declared in meta.json`);
   }
 
+  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
   res.type('text/plain; charset=utf-8').send(fs.readFileSync(filePath, 'utf8'));
 });
 
