@@ -75,7 +75,7 @@ function page(title, body) {
     <h1>Noahsoft · 봇 정책 허브</h1>
   </header>
   <div class="container">${body}</div>
-  <footer>Noahsoft Bot Policy Hub · 포트 ${PORT}</footer>
+  <footer>Noahsoft Bot Policy Hub</footer>
 </body>
 </html>`;
 }

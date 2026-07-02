@@ -1,0 +1,5 @@
+{
+  "name": "aichat",
+  "description": "멘션·답장으로 대화하는 AI 캐릭터 챗봇 — OpenAI 호환 API + SQLite 대화 이력 저장",
+  "lastUpdated": "2026-07-02"
+}
