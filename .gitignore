@@ -2,3 +2,5 @@ node_modules/
 .temp/
 *.env
 .env*
+!.env.example
+data/.mcp-keys.json
