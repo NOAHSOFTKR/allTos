@@ -1,8 +1,6 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const { marked } = require('marked');
-const { DATA_DIR, getMeta, getDocs, getBots } = require('./lib/docs');
+const { getMeta, getDocs, getBots, botExists, readDoc } = require('./lib/docs');
 
 const app = express();
 const PORT = 50000;
@@ -11,6 +9,13 @@ function docIcon(key) {
   if (key === 'tos') return '📄';
   if (key === 'pp') return '🔒';
   return '📎';
+}
+
+// Express 4는 async 핸들러의 reject를 자동으로 못 잡아서, next(err)로 넘겨주는 래퍼
+function asyncRoute(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
 }
 
 function page(title, body) {
@@ -70,8 +75,8 @@ function page(title, body) {
 }
 
 // 홈 — 봇 목록
-app.get('/', (req, res) => {
-  const bots = getBots();
+app.get('/', asyncRoute(async (req, res) => {
+  const bots = await getBots();
   const cards = bots.map(bot => {
     const badges = bot.docs.map(doc =>
       `<a class="badge badge-doc" href="/${bot.id}/${doc.key}">${docIcon(doc.key)} ${doc.label}</a><a class="badge raw-badge" href="/${bot.id}/${doc.key}/raw">RAW</a>`
@@ -93,22 +98,22 @@ app.get('/', (req, res) => {
     ${cards || '<div class="card"><p style="color:#64748b">등록된 봇이 없습니다.</p></div>'}`;
 
   res.send(page('Noahsoft 봇 정책 허브', body));
-});
+}));
 
 // 문서 렌더링 — /:botname/:type (tos/pp는 자동 노출, 그 외는 meta.json의 docs에 선언되어야 함)
-app.get('/:botname/:type', (req, res, next) => {
+app.get('/:botname/:type', asyncRoute(async (req, res, next) => {
   const { botname, type } = req.params;
-  if (!fs.existsSync(path.join(DATA_DIR, botname))) return next();
+  if (!(await botExists(botname))) return next();
 
-  const docs = getDocs(botname);
+  const docs = await getDocs(botname);
   const doc = docs.find(d => d.key === type);
   if (!doc) {
     return res.status(404).send(page('404', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 문서를 찾을 수 없습니다</h2><p style="color:#64748b">봇 <strong>${botname}</strong>의 <strong>${type}</strong> 문서가 존재하지 않거나 meta.json에 선언되지 않았습니다.</p></div>`));
   }
 
-  const meta = getMeta(botname);
-  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
-  const html = marked(fs.readFileSync(filePath, 'utf8'));
+  const meta = await getMeta(botname);
+  const { content } = await readDoc(botname, type);
+  const html = marked(content);
   const otherDocs = docs.filter(d => d.key !== type);
 
   const body = `
@@ -122,26 +127,30 @@ app.get('/:botname/:type', (req, res, next) => {
     <div class="content">${html}</div>`;
 
   res.send(page(`${meta.name} ${doc.label}`, body));
-});
+}));
 
 // RAW 마크다운 — /:botname/:type/raw
-app.get('/:botname/:type/raw', (req, res, next) => {
+app.get('/:botname/:type/raw', asyncRoute(async (req, res, next) => {
   const { botname, type } = req.params;
-  if (!fs.existsSync(path.join(DATA_DIR, botname))) return next();
+  if (!(await botExists(botname))) return next();
 
-  const docs = getDocs(botname);
-  const doc = docs.find(d => d.key === type);
+  const doc = await readDoc(botname, type);
   if (!doc) {
     return res.status(404).type('text').send(`404: ${botname}/${type}.md not found or not declared in meta.json`);
   }
 
-  const filePath = path.join(DATA_DIR, botname, `${type}.md`);
-  res.type('text/plain; charset=utf-8').send(fs.readFileSync(filePath, 'utf8'));
-});
+  res.type('text/plain; charset=utf-8').send(doc.content);
+}));
 
 // 404
 app.use((req, res) => {
   res.status(404).send(page('404', '<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 페이지를 찾을 수 없습니다</h2><p style="color:#64748b">요청하신 페이지가 존재하지 않습니다.</p></div>'));
+});
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('요청 처리 오류:', err);
+  res.status(504).send(page('504', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">504 — 응답 지연</h2><p style="color:#64748b">${err.message || '문서를 읽는 중 시간이 초과되었습니다.'}</p></div>`));
 });
 
 app.listen(PORT, () => {

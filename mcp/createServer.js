@@ -14,7 +14,7 @@ function createServer() {
       inputSchema: {},
     },
     async () => {
-      const bots = getBots();
+      const bots = await getBots();
       return { content: [{ type: 'text', text: JSON.stringify(bots, null, 2) }] };
     }
   );
@@ -27,11 +27,11 @@ function createServer() {
       inputSchema: { botId: z.string().describe('봇 식별자 (예: sh-bot, lumina, ttsbot, jiyun)') },
     },
     async ({ botId }) => {
-      if (!botExists(botId)) {
+      if (!(await botExists(botId))) {
         return { content: [{ type: 'text', text: `봇 "${botId}"을(를) 찾을 수 없습니다.` }], isError: true };
       }
-      const meta = getMeta(botId);
-      const docs = getDocs(botId);
+      const meta = await getMeta(botId);
+      const docs = await getDocs(botId);
       return { content: [{ type: 'text', text: JSON.stringify({ id: botId, name: meta.name, docs }, null, 2) }] };
     }
   );
@@ -47,10 +47,10 @@ function createServer() {
       },
     },
     async ({ botId, type }) => {
-      if (!botExists(botId)) {
+      if (!(await botExists(botId))) {
         return { content: [{ type: 'text', text: `봇 "${botId}"을(를) 찾을 수 없습니다.` }], isError: true };
       }
-      const doc = readDoc(botId, type);
+      const doc = await readDoc(botId, type);
       if (!doc) {
         return {
           content: [{ type: 'text', text: `"${botId}"의 "${type}" 문서를 찾을 수 없거나 meta.json에 선언되지 않았습니다.` }],
