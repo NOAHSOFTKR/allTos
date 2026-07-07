@@ -6,8 +6,9 @@ const {
   getMeta,
   botExists,
   readDoc,
-  upsertBotMeta,
-  upsertDoc,
+  editBotMeta,
+  addDoc,
+  editDoc,
   deleteDoc,
   deleteBot,
 } = require('../lib/docs');
@@ -72,10 +73,10 @@ function createServer() {
   );
 
   server.registerTool(
-    'upsert_bot_meta',
+    'edit_bot',
     {
-      title: '봇 메타정보 생성/수정',
-      description: '봇의 이름/설명/최종수정일을 생성하거나 수정합니다. 해당 봇 폴더가 없으면 새로 만듭니다.',
+      title: '봇 수정',
+      description: '이미 존재하는 봇의 이름/설명/최종수정일을 수정합니다. 존재하지 않는 봇이면 에러가 납니다 (새 봇은 add_doc으로 첫 문서를 추가하면 자동 생성됩니다).',
       inputSchema: {
         botId: z.string().describe('봇 식별자 (영문, 숫자, -, _ 만 허용)'),
         name: z.string().optional().describe('봇 이름'),
@@ -88,26 +89,45 @@ function createServer() {
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
       if (lastUpdated !== undefined) updates.lastUpdated = lastUpdated;
-      const meta = await upsertBotMeta(botId, updates);
+      const meta = await editBotMeta(botId, updates);
       return { content: [{ type: 'text', text: JSON.stringify(meta, null, 2) }] };
     }
   );
 
   server.registerTool(
-    'upsert_doc',
+    'add_doc',
     {
-      title: '문서 생성/수정',
+      title: '문서 추가',
       description:
-        '봇의 tos/pp 또는 커스텀 문서를 생성하거나 덮어씁니다. 새 커스텀 문서는 label을 함께 지정해야 meta.json의 docs에 선언되어 노출됩니다.',
+        '봇에 새 문서(tos/pp 또는 커스텀)를 추가합니다. 이미 있는 문서면 에러가 나며(수정은 edit_doc 사용), 새 커스텀 문서는 label이 필수입니다. 봇이 없으면 이 호출로 자동 생성됩니다.',
       inputSchema: {
         botId: z.string().describe('봇 식별자'),
-        type: z.string().describe('문서 종류 키 (tos, pp, 또는 새/기존 커스텀 키)'),
+        type: z.string().describe('문서 종류 키 (tos, pp, 또는 새 커스텀 키)'),
         content: z.string().describe('문서 원문 마크다운'),
-        label: z.string().optional().describe('커스텀 문서를 새로 만들 때 표시할 라벨 (예: "후원약관"). tos/pp는 불필요'),
+        label: z.string().optional().describe('커스텀 문서의 표시 라벨 (예: "후원약관"). 커스텀 문서는 필수, tos/pp는 불필요'),
       },
     },
     async ({ botId, type, content, label }) => {
-      const result = await upsertDoc(botId, type, content, label);
+      const result = await addDoc(botId, type, content, label);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.registerTool(
+    'edit_doc',
+    {
+      title: '문서 수정',
+      description:
+        '봇의 기존 문서(tos/pp 또는 커스텀) 내용을 수정합니다. 존재하지 않는 문서면 에러가 납니다 (새로 만들려면 add_doc 사용).',
+      inputSchema: {
+        botId: z.string().describe('봇 식별자'),
+        type: z.string().describe('수정할 문서 종류 키'),
+        content: z.string().describe('새 문서 원문 마크다운'),
+        label: z.string().optional().describe('커스텀 문서의 라벨을 함께 바꾸고 싶을 때만 지정. tos/pp는 불필요'),
+      },
+    },
+    async ({ botId, type, content, label }) => {
+      const result = await editDoc(botId, type, content, label);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
