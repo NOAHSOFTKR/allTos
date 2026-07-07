@@ -1,5 +1,8 @@
 {
   "name": "TTS 봇",
   "description": "음성 채널에서 텍스트를 음성으로 읽어주는 Discord TTS 봇 (discord.js v14)",
-  "lastUpdated": "2026-06-24"
+  "lastUpdated": "2026-06-24",
+  "docs": {
+    "tosaddon": "후원약관(부속약관)"
+  }
 }
