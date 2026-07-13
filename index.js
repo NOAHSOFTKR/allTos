@@ -66,7 +66,7 @@ function page(title, body) {
 <body>
   <header>
     <a href="/">← 홈</a>
-    <h1>Noahsoft · 봇 정책 허브</h1>
+    <h1>Noahsoft</h1>
   </header>
   <div class="container">${body}</div>
   <footer>Noahsoft Bot Policy Hub</footer>
@@ -74,12 +74,38 @@ function page(title, body) {
 </html>`;
 }
 
-// 홈 — 봇 목록
+// 홈 — 단체(그룹) 메인
 app.get('/', asyncRoute(async (req, res) => {
+  const bots = await getBots();
+  const cards = bots.map(bot => `
+    <div class="card">
+      <div class="card-title">${bot.name}</div>
+      <div class="card-desc">${bot.description || ''}</div>
+    </div>`).join('');
+
+  const body = `
+    <div class="hero">
+      <h2>Noahsoft</h2>
+      <p>다양한 목적의 Discord 봇을 만들고 운영하는 팀입니다.</p>
+    </div>
+    ${cards || '<div class="card"><p style="color:#64748b">등록된 봇이 없습니다.</p></div>'}
+    <div class="card" style="text-align:center">
+      <div class="card-desc" style="margin-bottom:16px">각 봇의 이용약관과 개인정보처리방침은 한 곳에서 확인할 수 있습니다.</div>
+      <a class="btn btn-active" href="/tos">약관·정책 모아보기 →</a>
+    </div>`;
+
+  res.send(page('Noahsoft', body));
+}));
+
+// /tos 하위 라우터 — 봇 목록, 개별 문서, RAW
+const tosRouter = express.Router();
+
+// 목록 — GET /tos
+tosRouter.get('/', asyncRoute(async (req, res) => {
   const bots = await getBots();
   const cards = bots.map(bot => {
     const badges = bot.docs.map(doc =>
-      `<a class="badge badge-doc" href="/${bot.id}/${doc.key}">${docIcon(doc.key)} ${doc.label}</a><a class="badge raw-badge" href="/${bot.id}/${doc.key}/raw">RAW</a>`
+      `<a class="badge badge-doc" href="/tos/${bot.id}/${doc.key}">${docIcon(doc.key)} ${doc.label}</a><a class="badge raw-badge" href="/tos/${bot.id}/${doc.key}/raw">RAW</a>`
     ).join('');
     return `
     <div class="card">
@@ -100,8 +126,8 @@ app.get('/', asyncRoute(async (req, res) => {
   res.send(page('Noahsoft 봇 정책 허브', body));
 }));
 
-// 문서 렌더링 — /:botname/:type (tos/pp는 자동 노출, 그 외는 meta.json의 docs에 선언되어야 함)
-app.get('/:botname/:type', asyncRoute(async (req, res, next) => {
+// 문서 렌더링 — GET /tos/:botname/:type (tos/pp는 자동 노출, 그 외는 meta.json의 docs에 선언되어야 함)
+tosRouter.get('/:botname/:type', asyncRoute(async (req, res, next) => {
   const { botname, type } = req.params;
   if (!(await botExists(botname))) return next();
 
@@ -120,8 +146,8 @@ app.get('/:botname/:type', asyncRoute(async (req, res, next) => {
     <div class="doc-header">
       <h2>${meta.name} · ${doc.label}</h2>
       <div class="doc-actions">
-        ${otherDocs.map(d => `<a class="btn" href="/${botname}/${d.key}">${d.label}</a>`).join('')}
-        <a class="btn" href="/${botname}/${type}/raw">RAW</a>
+        ${otherDocs.map(d => `<a class="btn" href="/tos/${botname}/${d.key}">${d.label}</a>`).join('')}
+        <a class="btn" href="/tos/${botname}/${type}/raw">RAW</a>
       </div>
     </div>
     <div class="content">${html}</div>`;
@@ -129,8 +155,8 @@ app.get('/:botname/:type', asyncRoute(async (req, res, next) => {
   res.send(page(`${meta.name} ${doc.label}`, body));
 }));
 
-// RAW 마크다운 — /:botname/:type/raw
-app.get('/:botname/:type/raw', asyncRoute(async (req, res, next) => {
+// RAW 마크다운 — GET /tos/:botname/:type/raw
+tosRouter.get('/:botname/:type/raw', asyncRoute(async (req, res, next) => {
   const { botname, type } = req.params;
   if (!(await botExists(botname))) return next();
 
@@ -141,6 +167,8 @@ app.get('/:botname/:type/raw', asyncRoute(async (req, res, next) => {
 
   res.type('text/plain; charset=utf-8').send(doc.content);
 }));
+
+app.use('/tos', tosRouter);
 
 // 404
 app.use((req, res) => {
