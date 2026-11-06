@@ -88,7 +88,7 @@
 
 ### 제12조 (문의)
 
-본 서비스에 관한 문의, 오류 신고, 이의 제기는 NOAHSOFT 공식 Discord 커뮤니티(https://discord.gg/z3HpT4ZhGF)로 보내 주세요. [확인 필요: 이메일 연락처 추가 여부]
+본 서비스에 관한 문의, 오류 신고, 이의 제기는 support@noahsoft.kr 또는 NOAHSOFT 공식 Discord 커뮤니티(https://discord.gg/z3HpT4ZhGF)로 보내 주세요. 보안 취약점 제보는 https://noahsoft.kr/security 의 안내를 따라 주세요.
 
 ### 제13조 (준거법과 관할)
 
