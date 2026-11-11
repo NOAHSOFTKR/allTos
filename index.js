@@ -232,7 +232,7 @@ tosRouter.get('/:botname/:alias/:raw(raw)?', asyncRoute(async (req, res, next) =
   const docs = await getDocs(botname);
   // 같은 이름의 문서를 직접 선언한 봇이 있으면 그 문서가 우선한다
   if (docs.some(d => d.key === alias) || !docs.some(d => d.key === target)) return next();
-  res.redirect(301, `/tos/${botname}/${target}${raw ? '/raw' : ''}`);
+  res.redirect(302, `/tos/${botname}/${target}${raw ? '/raw' : ''}`);
 }));
 
 // 문서 렌더링 — GET /tos/:botname/:type (tos/pp는 자동 노출, 그 외는 meta.json의 docs에 선언되어야 함)
@@ -243,7 +243,7 @@ tosRouter.get('/:botname/:type', asyncRoute(async (req, res, next) => {
   const docs = await getDocs(botname);
   const doc = docs.find(d => d.key === type);
   if (!doc) {
-    return res.status(404).send(page('404', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 문서를 찾을 수 없습니다</h2><p style="color:#64748b">봇 <strong>${botname}</strong>의 <strong>${type}</strong> 문서가 존재하지 않거나 meta.json에 선언되지 않았습니다.</p></div>`));
+    return res.status(404).send(page('404', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">404 — 문서를 찾을 수 없습니다</h2><p style="color:#64748b">봇 <strong>${escapeHtml(botname)}</strong>의 <strong>${escapeHtml(type)}</strong> 문서가 존재하지 않거나 meta.json에 선언되지 않았습니다.</p></div>`));
   }
 
   const meta = await getMeta(botname);
@@ -290,6 +290,8 @@ tosRouter.get('/:botname/:type/raw', asyncRoute(async (req, res, next) => {
     return res.status(404).type('text').send(`404: ${botname}/${type}.md not found or not declared in meta.json`);
   }
 
+  // 초안은 RAW도 검색에 잡히지 않게 한다
+  if ((await getMeta(botname)).status === 'draft') res.set('X-Robots-Tag', 'noindex');
   res.type('text/plain; charset=utf-8').send(doc.content);
 }));
 
@@ -303,7 +305,7 @@ app.use((req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('요청 처리 오류:', err);
-  res.status(504).send(page('504', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">504 — 응답 지연</h2><p style="color:#64748b">${err.message || '문서를 읽는 중 시간이 초과되었습니다.'}</p></div>`));
+  res.status(504).send(page('504', `<div class="card"><h2 style="color:#fff;margin-bottom:8px">504 — 응답 지연</h2><p style="color:#64748b">${escapeHtml(err.message || '문서를 읽는 중 시간이 초과되었습니다.')}</p></div>`));
 });
 
 app.listen(PORT, () => {
